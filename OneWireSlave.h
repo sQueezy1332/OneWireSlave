@@ -64,7 +64,7 @@
 #define CMD 0xAA
 typedef uint8_t byte;
 
-extern const byte pin_onewireslave;
+__attribute__((weak))  extern const byte pin_onewireslave;
 
 class OneWireSlave {
 private:
