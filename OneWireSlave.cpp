@@ -125,19 +125,18 @@ bool OneWireSniffer::waitForRequest(byte buf[], byte& cmd, uint16_t timeout_ms, 
 bool CRIT_TIMING OneWireSniffer::presenceDetection() {
 	IO_REG_TYPE mask IO_REG_MASK_ATTR = bitmask;
 	volatile IO_REG_TYPE* reg IO_REG_BASE_ATTR = baseReg;
-	uint32_t timestamp = uS + 70; // start timeslot < presence < 70         
-	while (DIRECT_READ(reg, mask)) {
-		if (uS > timestamp)
-			return false; // its not presence
-	}
-	timestamp += 280;  //350
-	while (!DIRECT_READ(reg, mask)) {
-		if (uS > timestamp) {
-			error = ONEWIRE_PRESENCE_LOW_ON_LINE;
-			return false;          // start timeslot < 350 < presence //
+	delayMicroseconds(70);
+	if (!DIRECT_READ(reg, mask)) {
+		uint32_t timestamp = uS + 280; //350
+		while (!DIRECT_READ(reg, mask)) {
+			if (uS > timestamp) {
+				error = ONEWIRE_PRESENCE_LOW_ON_LINE;
+				return false;          // start timeslot < 350 < presence //
+			}
 		}
+		return true; // RESET < RISING < FALLING < 70 < PRESENCE < 350
 	}
-	return true; // RESET < RISING < FALLING < 70 < PRESENCE < 350
+	return false; // its not presence
 }
 
 bool OneWireSniffer::recvAndProcessCmd(byte buf[], byte& cmd) {
@@ -333,7 +332,7 @@ bool CRIT_TIMING OneWireSlave::recvBit() {
 	noInterrupts();
 	waitTimeSlot();
 	if (error) goto exit;
-	delayMicroseconds(30);
+	delayMicroseconds(20);
 	bit = DIRECT_READ(reg, mask);
 exit:
 	interrupts();
