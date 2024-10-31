@@ -127,14 +127,14 @@ bool CRIT_TIMING OneWireSniffer::presenceDetection() {
 	volatile IO_REG_TYPE* reg IO_REG_BASE_ATTR = baseReg;
 	delayMicroseconds(70);
 	if (!DIRECT_READ(reg, mask)) {
-		uint32_t timestamp = uS + 280; //350
+		uint32_t timestamp = uS + 230; //300
 		while (!DIRECT_READ(reg, mask)) {
 			if (uS > timestamp) {
 				error = ONEWIRE_PRESENCE_LOW_ON_LINE;
-				return false;          // start timeslot < 350 < presence //
+				return false;          // start timeslot < 300 < presence //
 			}
 		}
-		return true; // RESET < RISING < FALLING < 70 < PRESENCE < 350
+		return true; // RESET < RISING < FALLING < 70 < PRESENCE < 300
 	}
 	return false; // its not presence
 }
