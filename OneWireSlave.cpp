@@ -144,6 +144,7 @@ again:
 	switch (cmd = recvByte()) {
 	case 0x55: // MATCH ROM //duty()
 	case 0xCC: // SKIP ROM  //duty()
+	case 0x0F:	
 	case 0x33: // READ ROM
 		(void)recvData(buf);
 		break;
