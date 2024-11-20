@@ -418,7 +418,7 @@ exit:
 	interrupts();
 }
 
-bool OneWireSlave::init(byte buf[8], bool crc_set) {
+void OneWireSlave::init(byte buf[8], bool crc_set) {
 	rom = buf;
 #if ONEWIRESLAVE_CRC
 	if (crc_set) {
