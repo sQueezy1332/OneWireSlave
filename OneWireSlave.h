@@ -16,6 +16,7 @@
 #define pMode(pin, mode)    pinMode(pin, mode)
 #define uS micros()
 #define mS millis()
+
 #ifdef ARDUINO_ARCH_ESP32
 // for info on this, search "IRAM_ATTR" at https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-guides/general-notes.html 
 #define CRIT_TIMING IRAM_ATTR
