@@ -112,42 +112,38 @@ void OneWireSlave::begin(byte pin) {
 	baseReg = PIN_TO_BASEREG(pin);
 }
 
-bool OneWireSniffer::waitForRequest(byte buf[], byte& cmd, uint16_t timeout_ms, bool ignore_errors) {
-	for (;;) {
-		if (!waitReset(timeout_ms)) continue;
-		if (!presenceDetection()) continue;
-		if (recvAndProcessCmd(buf, cmd)) return true;
-		if (ignore_errors) continue;
-		return false;
-	}
+bool OneWireSniffer::waitForRequest(byte buf[8], byte& cmd, uint16_t timeout_ms, bool ignore_errors) {
+	again:
+	if (waitReset(timeout_ms) 
+		&& presenceDetection() 
+		&& recvAndProcessCmd(buf, cmd)) return true;
+	if (ignore_errors) goto again;
+	return false;
 }
 
 bool CRIT_TIMING OneWireSniffer::presenceDetection() {
 	IO_REG_TYPE mask IO_REG_MASK_ATTR = bitmask;
 	volatile IO_REG_TYPE* reg IO_REG_BASE_ATTR = baseReg;
-	delayMicroseconds(70);
-	if (!DIRECT_READ(reg, mask)) {
-		uint32_t timestamp = uS + 230; //300
-		while (!DIRECT_READ(reg, mask)) {
-			if (uS > timestamp) {
-				error = ONEWIRE_PRESENCE_LOW_ON_LINE;
-				return false;          // start timeslot < 300 < presence //
-			}
-		}
-		return true; // RESET < RISING < FALLING < 70 < PRESENCE < 300
+	uint32_t timestamp = uS + 70; // start timeslot < presence < 70         
+	while (DIRECT_READ(reg, mask)) {
+		if (uS > timestamp)
+			return false; // its not presence
 	}
-	return false; // its not presence
+	timestamp += 280;  //350
+	while (!DIRECT_READ(reg, mask)) {
+		if (uS > timestamp) {
+			error = ONEWIRE_PRESENCE_LOW_ON_LINE;
+			return false;          // start timeslot < 350 < presence //
+		}
+	}
+	return true; // RESET < RISING < FALLING < 70 < PRESENCE < 350
 }
 
-bool OneWireSniffer::recvAndProcessCmd(byte buf[], byte& cmd) {
+bool OneWireSniffer::recvAndProcessCmd(byte*const& buf, byte& cmd) {
 again:
-	switch (cmd = recvByte()) {
-	case 0x55: // MATCH ROM //duty()
-	case 0xCC: // SKIP ROM  //duty()
-	case 0x0F:	
-	case 0x33: // READ ROM
-		(void)recvData(buf);
-		break;
+	byte command = recvByte();
+	if (error) return false;
+	switch (cmd = command) {
 	case 0xEC: // ALARM SEARCH
 	case 0xF0: // SEARCH ROM
 		(void)searchAndReceive(buf);
@@ -155,25 +151,28 @@ again:
 	case CMD: // CUSTOM COMMAND
 		(void)sendData(buf);
 		break;
-	default: // Unknow command
-		if (!error) goto again;// skip if no error
+	case 0x00:
+	case 0xFF:
 		return false;
+	default: // READ ROM
+		(void)recvData(buf);
 	}
 	if (error) return false;
 	return true;
 }
 
-bool OneWireSniffer::searchAndReceive(byte buf[]) {
+bool OneWireSniffer::searchAndReceive(byte*const& buf) {
 	error = ONEWIRE_NO_ERROR;
 	noInterrupts();
-	for (byte i = 0, bitmask; i < 8; i++) {
-		for (bitmask = 0x01; bitmask; bitmask <<= 1) {
+	for (byte i = 0, BYTE, bitmask; i < 8; i++) {
+		for (bitmask = 0x01, BYTE = 0; bitmask; bitmask <<= 1) {
 			waitTimeSlot(); if (error) goto exit;
 			waitTimeSlot(); if (error) goto exit;
 			if (recvBit())
-				buf[i] |= bitmask;
+				BYTE |= bitmask;
 			if (error) goto exit;
 		}
+		buf[i] = BYTE;
 	}
 	return true;
 exit:
@@ -236,6 +235,7 @@ bool OneWireSlave::recvAndProcessCmd() {
 			//duty();
 		case 0xCC: // SKIP ROM
 			//duty();
+			(void)sendData(rom);
 			if (error != ONEWIRE_NO_ERROR)
 				return false;
 			return true;
@@ -270,7 +270,7 @@ bool CRIT_TIMING OneWireSlave::waitReset(uint16_t timeout_ms) {
 			return false;
 		}
 	}
-	if (uS < (timestamp - 490)) {  //470
+	if (uS < (timestamp - 600)) {  //360
 		error = ONEWIRE_VERY_SHORT_RESET;
 		return false;
 	}
@@ -293,16 +293,17 @@ bool CRIT_TIMING OneWireSlave::presence() {
 	// docs call for a total of 480 possible from start of rise before reset timing is completed
 	//This gives us 50 micros to play with, but being early is probably best for timing on read later
 	//delayMicroseconds(300 - delta);
-	delayMicroseconds(280);
-	//Modified to wait a while (roughly 50 micros) for the line to go high
+	//delayMicroseconds(280);
+	/*//Modified to wait a while (roughly 50 micros) for the line to go high
 	// since the above wait is about 430 micros, this makes this 480 closer
 	// to the 480 standard spec and the 490 used on the Arduino master code
-	// anything longer then is most likely something going wrong.
-	uint32_t timestamp = uS + 50;
-	while (!DIRECT_READ(reg, mask)) {
-		if (uS > timestamp) {
-			error = ONEWIRE_PRESENCE_LOW_ON_LINE;
-			return false;
+	// anything longer then is most likely something going wrong.*/
+	if (!DIRECT_READ(reg, mask)) {
+		for (uint32_t timestamp = uS + 330; !DIRECT_READ(reg, mask);) {
+			if (uS > timestamp) {
+				error = ONEWIRE_PRESENCE_LOW_ON_LINE;
+				return false;
+			}
 		}
 	}
 	return true;
@@ -320,9 +321,11 @@ byte OneWireSlave::recvData(byte buf[], byte len) {
 byte OneWireSlave::recvByte() {
 	uint8_t BYTE = 0;
 	error = ONEWIRE_NO_ERROR;
-	for (uint8_t bitmask = 0x01; bitmask && !error; bitmask <<= 1)
+	for (uint8_t bitmask = 0x01; bitmask; bitmask <<= 1) {
 		if (recvBit())
 			BYTE |= bitmask;
+		if (error) break;
+	}
 	return BYTE;
 }
 
@@ -351,7 +354,7 @@ void CRIT_TIMING OneWireSlave::waitTimeSlot() {
 			return;
 		}
 	}//Wait for a fall form 1 to 0 on the line for timeout duration
-	retries = TIMESLOT_WAIT_RECOVERY_RETRY_COUNT;
+	retries = (TIMESLOT_WAIT_RECOVERY_RETRY_COUNT);
 	while (DIRECT_READ(reg, mask)) {
 		if (retries-- == 0) {
 			error = ONEWIRE_READ_TIMESLOT_TIMEOUT_HIGH;
@@ -375,7 +378,7 @@ bool OneWireSlave::search() {
 	return true;
 }
 
-byte OneWireSlave::sendData(const byte buf[], byte lenght) {
+byte OneWireSlave::sendData(const byte* const& buf, byte lenght) {
 	byte i = 0;
 	do {
 		sendByte(buf[i]);
@@ -387,7 +390,7 @@ byte OneWireSlave::sendData(const byte buf[], byte lenght) {
 void OneWireSlave::sendByte(const byte v) {
 	error = ONEWIRE_NO_ERROR;
 	for (uint8_t bitmask = 0x01; bitmask && !error; bitmask <<= 1)
-		sendBit((bitmask & v) ? 1 : 0);
+		sendBit(bitmask & v);
 }
 
 void CRIT_TIMING OneWireSlave::sendBit(const bool bit) {
@@ -399,14 +402,14 @@ void CRIT_TIMING OneWireSlave::sendBit(const bool bit) {
 	if (error) goto exit;
 	if (bit == 0) {
 		DIRECT_MODE_OUTPUT(reg, mask);
-		delayMicroseconds(50);
+		delayMicroseconds(30);
 		DIRECT_MODE_INPUT(reg, mask);
 	}
 exit:
 	interrupts();
 }
 
-bool OneWireSlave::init(byte(&buf)[8], bool crc_set) {
+bool OneWireSlave::init(byte buf[8], bool crc_set) {
 	rom = buf;
 #if ONEWIRESLAVE_CRC
 	if (crc_set) {
@@ -451,7 +454,7 @@ static const uint8_t PROGMEM dscrc_table[] = {
 // compared to all those delayMicrosecond() calls.  But I got
 // confused, so I use this table from the examples.)
 //
-uint8_t OneWireSlave::crc8(byte addr[], byte len) {
+uint8_t OneWireSlave::crc8(const byte addr[], byte len) {
 	uint8_t crc = 0;
 
 	while (len--) {
@@ -478,7 +481,4 @@ uint8_t OneWireSlave::crc8(byte addr[], byte len) {
 	return crc;
 }
 #endif
-
 #endif
-
-
