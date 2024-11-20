@@ -298,12 +298,21 @@ bool CRIT_TIMING OneWireSlave::presence() {
 	// since the above wait is about 430 micros, this makes this 480 closer
 	// to the 480 standard spec and the 490 used on the Arduino master code
 	// anything longer then is most likely something going wrong.*/
-	if (!DIRECT_READ(reg, mask)) {
-		for (uint32_t timestamp = uS + 330; !DIRECT_READ(reg, mask);) {
-			if (uS > timestamp) {
-				error = ONEWIRE_PRESENCE_LOW_ON_LINE;
-				return false;
-			}
+	delayMicroseconds(120);
+	DIRECT_MODE_INPUT(reg, mask);     // allow it to float
+	//Default "delta" is 25, so this is 275 in that condition, totaling to 155+275=430 since the reset rise
+	// docs call for a total of 480 possible from start of rise before reset timing is completed
+	//This gives us 50 micros to play with, but being early is probably best for timing on read later
+	//delayMicroseconds(300 - delta);
+	//delayMicroseconds(280);
+	/*//Modified to wait a while (roughly 50 micros) for the line to go high
+	// since the above wait is about 430 micros, this makes this 480 closer
+	// to the 480 standard spec and the 490 used on the Arduino master code
+	// anything longer then is most likely something going wrong.*/
+	for (uint32_t timestamp = uS + 330; !DIRECT_READ(reg, mask);) {
+		if (uS > timestamp) {
+			error = ONEWIRE_PRESENCE_LOW_ON_LINE;
+			return false;
 		}
 	}
 	return true;
@@ -366,9 +375,9 @@ void CRIT_TIMING OneWireSlave::waitTimeSlot() {
 bool OneWireSlave::search() {
 	bool bit_send, bit_recv; byte i, bitmask;
 	error = ONEWIRE_NO_ERROR;
-	for (i = 0; i < 8; i++) {
-		for (bitmask = 0x01; bitmask; bitmask <<= 1) {
-			bit_send = (bitmask & rom[i]) ? 1 : 0;
+	for (byte i = 0, bitmask; i < 8; i++) {
+		for (bitmask = 1; bitmask; bitmask <<= 1) {
+			bit_send = (bitmask & rom[i]);
 			sendBit(bit_send); if (error) return false;
 			sendBit(!bit_send); if (error) return false;
 			bit_recv = recvBit(); if (error) return false;
