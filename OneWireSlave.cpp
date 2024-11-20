@@ -424,8 +424,7 @@ bool OneWireSlave::init(byte buf[8], bool crc_set) {
 	if (crc_set) {
 		rom[7] = crc8(buf, 7);
 		return true;
-	}
-	else return (crc8(buf, 7) == buf[7]);
+	};
 #endif // #if ONEWIRESLAVE_CRC
 	return false;
 }
