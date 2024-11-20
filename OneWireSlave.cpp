@@ -113,11 +113,11 @@ void OneWireSlave::begin(byte pin) {
 }
 
 bool OneWireSniffer::waitForRequest(byte buf[8], byte& cmd, uint16_t timeout_ms, bool ignore_errors) {
-	again:
-	if (waitReset(timeout_ms) 
-		&& presenceDetection() 
-		&& recvAndProcessCmd(buf, cmd)) return true;
-	if (ignore_errors) goto again;
+	do {
+		if (!waitReset(timeout_ms)) continue;
+		if (!presenceDetection()) continue;
+		if (recvAndProcessCmd(buf, cmd)) return true;
+	} while (ignore_errors);
 	return false;
 }
 
