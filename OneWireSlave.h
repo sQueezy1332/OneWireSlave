@@ -77,10 +77,10 @@ public:
 	OneWireSlave() { begin(pin_onewireslave); }
 	OneWireSlave(byte pin) { begin(pin); };
 	void begin(byte pin);
+	void init(byte buf[8], bool crc_set = false);
 	bool waitForRequest(uint16_t timeout_ms = 1000, bool ignore_errors = false);
 	bool recvAndProcessCmd();
 	bool waitReset(uint16_t timeout_ms);
-	bool init(byte (&buf)[8], bool crc_set = false);
 	bool presence();
 	byte recvData(byte buf[], byte lenght = 8);
 	byte recvByte();
