@@ -7,22 +7,15 @@
 
 #pragma once
 #ifdef __cplusplus
-
 #include <stdint.h>
-
 #if defined(__AVR__)
 #include <util/crc16.h>
 #endif
 
-#if ARDUINO >= 100
 #include <Arduino.h>       // for delayMicroseconds, digitalPinToBitMask, etc
 #define pMode(pin, mode)    pinMode(pin, mode)
 #define uS micros()
 #define mS millis()
-#else
-#include "WProgram.h"      // for delayMicroseconds
-#include "pins_arduino.h"  // for digitalPinToBitMask, etc
-#endif
 #ifdef ARDUINO_ARCH_ESP32
 // for info on this, search "IRAM_ATTR" at https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-guides/general-notes.html 
 #define CRIT_TIMING IRAM_ATTR
