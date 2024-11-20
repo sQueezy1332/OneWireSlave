@@ -99,8 +99,7 @@ bool OneWireSlave::waitForRequestInterrupt(bool ignore_errors) {
 	while (recvAndProcessCmd()) {};
 	if ((errno == ONEWIRE_NO_ERROR) || ignore_errors) {
 		//continue;
-	}
-	else {
+	} else {
 		return false;
 	}
 }
@@ -139,7 +138,7 @@ bool CRIT_TIMING OneWireSniffer::presenceDetection() {
 	return true; // RESET < RISING < FALLING < 70 < PRESENCE < 350
 }
 
-bool OneWireSniffer::recvAndProcessCmd(byte*const& buf, byte& cmd) {
+bool OneWireSniffer::recvAndProcessCmd(byte* const& buf, byte& cmd) {
 again:
 	byte command = recvByte();
 	if (error) return false;
@@ -161,7 +160,7 @@ again:
 	return true;
 }
 
-bool OneWireSniffer::searchAndReceive(byte*const& buf) {
+bool OneWireSniffer::searchAndReceive(byte* const& buf) {
 	error = ONEWIRE_NO_ERROR;
 	noInterrupts();
 	for (byte i = 0, BYTE, bitmask; i < 8; i++) {
@@ -182,33 +181,18 @@ exit:
 
 bool OneWireSlave::waitForRequest(uint16_t timeout_ms, bool ignore_errors) {
 	error = ONEWIRE_NO_ERROR;
-	for (;;) {
-		//delayMicroseconds(40);
-		//Once reset is done, it waits another 30 micros
-		//Master wait is 65, so we have 35 more to send our presence now that reset is done
-		if (!waitReset(timeout_ms)) {
-			continue;
-		}
-		//Reset is complete, tell the master we are prsent
-		// This will pull the line low for 125 micros (155 micros since the reset) and 
-		//  then wait another 275 plus whatever wait for the line to go high to a max of 480
-		// This has been modified from original to wait for the line to go high to a max of 480.
-		if (!presence()) {
-			continue;
-		}
-		//Now that the master should know we are here, we will get a command from the line
-		//Because of our changes to the presence code, the line should be guranteed to be high
-		if (recvAndProcessCmd())
-			return true;
-		else if (ignore_errors)
-			continue;
-		return false;
-	}
+	do {
+		if (!waitReset(timeout_ms))continue;
+		if (!presence())continue;
+		if (recvAndProcessCmd()) return true;
+	}	while (ignore_errors);
+	return false;
 }
 
 bool OneWireSlave::recvAndProcessCmd() {
 	//uint8_t oldSREG = 0;
 	//uint16_t raw = 0;
+	if (rom == nullptr) return false;
 	for (;;) {
 		switch (recvByte()) {
 		case 0xF0: // SEARCH ROM
@@ -261,8 +245,7 @@ bool CRIT_TIMING OneWireSlave::waitReset(uint16_t timeout_ms) {
 				return false;
 			}
 		}
-	}
-	else while (DIRECT_READ(reg, mask)) {}; //Will wait forever for the line to fall
+	} else while (DIRECT_READ(reg, mask)) {}; //Will wait forever for the line to fall
 	timestamp = uS + 960;
 	while (!DIRECT_READ(reg, mask)) {
 		if (uS > timestamp) {
@@ -287,17 +270,6 @@ bool CRIT_TIMING OneWireSlave::presence() {
 	DIRECT_MODE_OUTPUT(reg, mask);    // drive output low
 	//Delaying for another 125 (orignal was 120) with the line set low is a total of at least 155 micros
 	// total since reset high depends on commands done prior, is technically a little longer
-	delayMicroseconds(120);
-	DIRECT_MODE_INPUT(reg, mask);     // allow it to float
-	//Default "delta" is 25, so this is 275 in that condition, totaling to 155+275=430 since the reset rise
-	// docs call for a total of 480 possible from start of rise before reset timing is completed
-	//This gives us 50 micros to play with, but being early is probably best for timing on read later
-	//delayMicroseconds(300 - delta);
-	//delayMicroseconds(280);
-	/*//Modified to wait a while (roughly 50 micros) for the line to go high
-	// since the above wait is about 430 micros, this makes this 480 closer
-	// to the 480 standard spec and the 490 used on the Arduino master code
-	// anything longer then is most likely something going wrong.*/
 	delayMicroseconds(120);
 	DIRECT_MODE_INPUT(reg, mask);     // allow it to float
 	//Default "delta" is 25, so this is 275 in that condition, totaling to 155+275=430 since the reset rise
@@ -373,7 +345,7 @@ void CRIT_TIMING OneWireSlave::waitTimeSlot() {
 }
 
 bool OneWireSlave::search() {
-	bool bit_send, bit_recv; byte i, bitmask;
+	bool bit_send, bit_recv;
 	error = ONEWIRE_NO_ERROR;
 	for (byte i = 0, bitmask; i < 8; i++) {
 		for (bitmask = 1; bitmask; bitmask <<= 1) {
@@ -423,10 +395,8 @@ void OneWireSlave::init(byte buf[8], bool crc_set) {
 #if ONEWIRESLAVE_CRC
 	if (crc_set) {
 		rom[7] = crc8(buf, 7);
-		return true;
 	};
 #endif // #if ONEWIRESLAVE_CRC
-	return false;
 }
 
 #if ONEWIRESLAVE_CRC
