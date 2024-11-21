@@ -25,7 +25,7 @@
 #define DIRECT_WRITE_HIGH(pin)	gio::high(pin)	//OPEN_DRAIN
 #define DIRECT_WRITE_LOW(pin) gio::low(pin)
 #endif
-#define uS micros()
+#define systime micros()
 #define mS millis()
 
 #ifdef ARDUINO_ARCH_ESP32
