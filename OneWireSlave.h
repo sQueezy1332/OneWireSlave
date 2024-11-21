@@ -108,7 +108,7 @@ public:
 
 class OneWireSniffer : public OneWireSlave {
 public:
-	OneWireSniffer() : OneWireSlave() {};
+	OneWireSniffer() {}; //OneWireSlave() {};
 	bool waitForRequest(byte buf[8], byte& cmd, uint16_t timeout_ms = 1000, bool ignore_errors = true);
 	bool presenceDetection();
 	bool recvAndProcessCmd(byte* const& buf, byte& cmd);
