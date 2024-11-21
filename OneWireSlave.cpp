@@ -109,6 +109,7 @@ void OneWireSlave::begin(byte pin) {
 	pInit(pin, INPUT);
 #else
 	pInit(pin, OUTPUT_OPEN_DRAIN);
+	DIRECT_WRITE_HIGH(pin);
 #endif // __AVR__
 }
 
