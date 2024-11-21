@@ -141,7 +141,8 @@ bool OneWireSniffer::recvAndProcessCmd(byte* const& buf, byte& cmd) {
 again:
 	byte command = recvByte();
 	if (error) return false;
-	switch (cmd = command) {
+	cmd = command;
+	switch (command) {
 	case 0xEC: // ALARM SEARCH
 	case 0xF0: // SEARCH ROM
 		(void)searchAndReceive(buf);
