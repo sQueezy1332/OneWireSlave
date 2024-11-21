@@ -122,14 +122,14 @@ bool OneWireSniffer::waitForRequest(byte buf[8], byte& cmd, uint16_t timeout_ms,
 }
 
 bool CRIT_TIMING OneWireSniffer::presenceDetection() {
-	uint32_t timestamp = uS + 70; // start timeslot < presence < 70         
+	uint32_t timestamp = systime + 70; // start timeslot < presence < 70         
 	while (DIRECT_READ(pin_onewire)) {
-		if (uS > timestamp)
+		if (systime > timestamp)
 			return false; // its not presence
 	}
 	timestamp += 280;  //350
 	while (!DIRECT_READ(pin_onewire)) {
-		if (uS > timestamp) {
+		if (systime > timestamp) {
 			error = ONEWIRE_PRESENCE_LOW_ON_LINE;
 			return false;          // start timeslot < 350 < presence //
 		}
@@ -244,14 +244,14 @@ bool CRIT_TIMING OneWireSlave::waitReset(uint16_t timeout_ms) {
 			}
 		}
 	} else while (DIRECT_READ(pin_onewire)) {}; //Will wait forever for the line to fall
-	timestamp = uS + 960;
+	timestamp = systime + 960;
 	while (!DIRECT_READ(pin_onewire)) {
-		if (uS > timestamp) {
+		if (systime > timestamp) {
 			error = ONEWIRE_VERY_LONG_RESET;
 			return false;
 		}
 	}
-	if (uS < (timestamp - 600)) {  //360
+	if (systime < (timestamp - 600)) {  //360
 		error = ONEWIRE_VERY_SHORT_RESET;
 		return false;
 	}
@@ -277,8 +277,8 @@ bool CRIT_TIMING OneWireSlave::presence() {
 	// since the above wait is about 430 micros, this makes this 480 closer
 	// to the 480 standard spec and the 490 used on the Arduino master code
 	// anything longer then is most likely something going wrong.*/
-	for (uint32_t timestamp = uS + 330; !DIRECT_READ(pin_onewire);) {
-		if (uS > timestamp) {
+	for (uint32_t timestamp = systime + 330; !DIRECT_READ(pin_onewire);) {
+		if (systime > timestamp) {
 			error = ONEWIRE_PRESENCE_LOW_ON_LINE;
 			return false;
 		}
@@ -448,4 +448,5 @@ uint8_t OneWireSlave::crc8(byte addr[], byte len) {
 	return crc;
 }
 #endif
+
 #endif
