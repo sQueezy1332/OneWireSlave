@@ -50,7 +50,7 @@ sample code bearing this copyright.
 //---------------------------------------------------------------------------
 */
 #include "OneWireSlave.h"
-#include "util/OneWire_direct_gpio.h"
+//#include "util/OneWire_direct_gpio.h"
 #if defined INTERRUPT_MODE
 void OneWireSlave::ISRPIN() {
 	(*static_OWS_instance).MasterResetPulseDetection();
@@ -104,11 +104,12 @@ bool OneWireSlave::waitForRequestInterrupt(bool ignore_errors) {
 	}
 }
 #endif // INTERRUPT_MODE
-
 void OneWireSlave::begin(byte pin) {
-	pMode(pin, INPUT/*INPUT_PULLUP*/);
-	bitmask = PIN_TO_BITMASK(pin);
-	baseReg = PIN_TO_BASEREG(pin);
+#ifdef __AVR__
+	pInit(pin, INPUT);
+#else
+	pInit(pin, OUTPUT_OPEN_DRAIN);
+#endif // __AVR__
 }
 
 bool OneWireSniffer::waitForRequest(byte buf[8], byte& cmd, uint16_t timeout_ms, bool ignore_errors) {
@@ -121,15 +122,13 @@ bool OneWireSniffer::waitForRequest(byte buf[8], byte& cmd, uint16_t timeout_ms,
 }
 
 bool CRIT_TIMING OneWireSniffer::presenceDetection() {
-	IO_REG_TYPE mask IO_REG_MASK_ATTR = bitmask;
-	volatile IO_REG_TYPE* reg IO_REG_BASE_ATTR = baseReg;
 	uint32_t timestamp = uS + 70; // start timeslot < presence < 70         
-	while (DIRECT_READ(reg, mask)) {
+	while (DIRECT_READ(pin_onewire)) {
 		if (uS > timestamp)
 			return false; // its not presence
 	}
 	timestamp += 280;  //350
-	while (!DIRECT_READ(reg, mask)) {
+	while (!DIRECT_READ(pin_onewire)) {
 		if (uS > timestamp) {
 			error = ONEWIRE_PRESENCE_LOW_ON_LINE;
 			return false;          // start timeslot < 350 < presence //
@@ -182,8 +181,8 @@ exit:
 bool OneWireSlave::waitForRequest(uint16_t timeout_ms, bool ignore_errors) {
 	error = ONEWIRE_NO_ERROR;
 	do {
-		if (!waitReset(timeout_ms))continue;
-		if (!presence())continue;
+		if (!waitReset(timeout_ms)) continue;
+		if (!presence()) continue;
 		if (recvAndProcessCmd()) return true;
 	}	while (ignore_errors);
 	return false;
@@ -233,21 +232,19 @@ bool OneWireSlave::recvAndProcessCmd() {
 }
 
 bool CRIT_TIMING OneWireSlave::waitReset(uint16_t timeout_ms) {
-	IO_REG_TYPE mask IO_REG_MASK_ATTR = bitmask;
-	volatile IO_REG_TYPE* reg IO_REG_BASE_ATTR = baseReg;
 	uint32_t timestamp;
 	error = ONEWIRE_NO_ERROR;
 	if (timeout_ms) {      //Wait for the line to fall
 		timestamp = mS + timeout_ms;
-		while (DIRECT_READ(reg, mask)) {
+		while (DIRECT_READ(pin_onewire)) {
 			if (mS > timestamp) {
 				error = ONEWIRE_WAIT_RESET_TIMEOUT;
 				return false;
 			}
 		}
-	} else while (DIRECT_READ(reg, mask)) {}; //Will wait forever for the line to fall
+	} else while (DIRECT_READ(pin_onewire)) {}; //Will wait forever for the line to fall
 	timestamp = uS + 960;
-	while (!DIRECT_READ(reg, mask)) {
+	while (!DIRECT_READ(pin_onewire)) {
 		if (uS > timestamp) {
 			error = ONEWIRE_VERY_LONG_RESET;
 			return false;
@@ -261,17 +258,15 @@ bool CRIT_TIMING OneWireSlave::waitReset(uint16_t timeout_ms) {
 }
 
 bool CRIT_TIMING OneWireSlave::presence() {
-	IO_REG_TYPE mask IO_REG_MASK_ATTR = bitmask;
-	volatile IO_REG_TYPE* reg IO_REG_BASE_ATTR = baseReg;
 	delayMicroseconds(30);
 	// Master will not read until 70 recommended, but could read as early as 60
 	// so we should be well enough ahead of that. Arduino waits 65
 	error = ONEWIRE_NO_ERROR;
-	DIRECT_MODE_OUTPUT(reg, mask);    // drive output low
+	DIRECT_WRITE_LOW(pin_onewire);    // drive output low
 	//Delaying for another 125 (orignal was 120) with the line set low is a total of at least 155 micros
 	// total since reset high depends on commands done prior, is technically a little longer
 	delayMicroseconds(120);
-	DIRECT_MODE_INPUT(reg, mask);     // allow it to float
+	DIRECT_WRITE_HIGH(pin_onewire);     // allow it to float
 	//Default "delta" is 25, so this is 275 in that condition, totaling to 155+275=430 since the reset rise
 	// docs call for a total of 480 possible from start of rise before reset timing is completed
 	//This gives us 50 micros to play with, but being early is probably best for timing on read later
@@ -281,7 +276,7 @@ bool CRIT_TIMING OneWireSlave::presence() {
 	// since the above wait is about 430 micros, this makes this 480 closer
 	// to the 480 standard spec and the 490 used on the Arduino master code
 	// anything longer then is most likely something going wrong.*/
-	for (uint32_t timestamp = uS + 330; !DIRECT_READ(reg, mask);) {
+	for (uint32_t timestamp = uS + 330; !DIRECT_READ(pin_onewire);) {
 		if (uS > timestamp) {
 			error = ONEWIRE_PRESENCE_LOW_ON_LINE;
 			return false;
@@ -311,32 +306,28 @@ byte OneWireSlave::recvByte() {
 }
 
 bool CRIT_TIMING OneWireSlave::recvBit() {
-	IO_REG_TYPE mask IO_REG_MASK_ATTR = bitmask;
-	volatile IO_REG_TYPE* reg IO_REG_BASE_ATTR = baseReg;
 	bool bit;
 	noInterrupts();
 	waitTimeSlot();
 	if (error) goto exit;
 	delayMicroseconds(20);
-	bit = DIRECT_READ(reg, mask);
+	bit = DIRECT_READ(pin_onewire);
 exit:
 	interrupts();
 	return bit;
 }
 
 void CRIT_TIMING OneWireSlave::waitTimeSlot() {
-	IO_REG_TYPE mask IO_REG_MASK_ATTR = bitmask;
-	volatile IO_REG_TYPE* reg IO_REG_BASE_ATTR = baseReg;
 	volatile uint16_t retries = TIMESLOT_WAIT_RETRY_COUNT;
 	//Wait for a 0 to rise to 1 on the line for timeout duration
-	while (!DIRECT_READ(reg, mask)) { //While line is low, retry
+	while (!DIRECT_READ(pin_onewire)) { //While line is low, retry
 		if (retries-- == 0) {
 			error = ONEWIRE_READ_TIMESLOT_TIMEOUT_LOW;
 			return;
 		}
 	}//Wait for a fall form 1 to 0 on the line for timeout duration
 	retries = (TIMESLOT_WAIT_RECOVERY_RETRY_COUNT);
-	while (DIRECT_READ(reg, mask)) {
+	while (DIRECT_READ(pin_onewire)) {
 		if (retries-- == 0) {
 			error = ONEWIRE_READ_TIMESLOT_TIMEOUT_HIGH;
 			return;
@@ -375,16 +366,13 @@ void OneWireSlave::sendByte(const byte v) {
 }
 
 void CRIT_TIMING OneWireSlave::sendBit(const bool bit) {
-	IO_REG_TYPE mask IO_REG_MASK_ATTR = bitmask;
-	volatile IO_REG_TYPE* reg IO_REG_BASE_ATTR = baseReg;
 	noInterrupts();
-	//waitTimeSlot waits for a low to high transition followed by a high to low within the time-out
 	waitTimeSlot();
 	if (error) goto exit;
 	if (bit == 0) {
-		DIRECT_MODE_OUTPUT(reg, mask);
+		DIRECT_WRITE_LOW(pin_onewire);
 		delayMicroseconds(30);
-		DIRECT_MODE_INPUT(reg, mask);
+		DIRECT_WRITE_HIGH(pin_onewire);
 	}
 exit:
 	interrupts();
